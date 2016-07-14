@@ -253,7 +253,7 @@ int main(int argc, char** argv){
     //ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, callback_velodyne);
     //ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("ndt_map", 10, callback_velodyne);
     
-    ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("ndt_map", 10, callback_velodyne);
+    ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("velodyne_points", 10, callback_velodyne);
     
     cout << frame_ids[0] << endl;
     cout << frame_ids[1] << endl;    
