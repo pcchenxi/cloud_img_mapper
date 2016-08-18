@@ -18,41 +18,25 @@
 
 using namespace std;
 
-sensor_msgs::PointCloud2 velodyne_cloud;
-
-class FrameDrawer
+class Cloud_Image_Mapper
 {
-  ros::NodeHandle nh_;
-  image_transport::ImageTransport it_;
-  image_transport::CameraSubscriber sub_;
-  image_transport::Publisher pub_;
-  ros::Publisher pub_velodyne_color_;
-  tf::TransformListener tf_listener_;
+  tf::TransformListener *tf_listener_;
   image_geometry::PinholeCameraModel cam_model_;
-  std::vector<std::string> frame_ids_;
   CvFont font_;
   
   //sensor_msgs::PointCloud2 transform_cloud(sensor_msgs::PointCloud2ConstPtr cloud_in, string frame_target);
 
 public:
-  FrameDrawer(const std::vector<std::string>& frame_ids)
-    : it_(nh_), frame_ids_(frame_ids)
+  Cloud_Image_Mapper(tf::TransformListener *tf_listener)
   {
-    std::string image_topic = nh_.resolveName("image");
-    
-    sub_ = it_.subscribeCamera(image_topic, 1, &FrameDrawer::imageCb, this);
-    pub_ = it_.advertise("image_out", 1);
-    pub_velodyne_color_ = nh_.advertise<sensor_msgs::PointCloud2>("/velodyne_points_color", 1, this);
-
-    // cout << image_topic << endl;
-    //cvInitFont(&font_, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5);
+    tf_listener_ = tf_listener;
   }
 
 
-  sensor_msgs::PointCloud2 transform_cloud(sensor_msgs::PointCloud2 cloud_in, string frame_target)
+  pcl::PointCloud<pcl::PointXYZRGB> transform_cloud(pcl::PointCloud<pcl::PointXYZRGB> cloud_in, string frame_target)
   {
     ////////////////////////////////// transform ////////////////////////////////////////
-    sensor_msgs::PointCloud2 cloud_out;
+    pcl::PointCloud<pcl::PointXYZRGB> cloud_out;
     tf::StampedTransform to_target;
     
     // cout << frame_target << "  image frame: " << cloud_in.header.frame_id << endl;
@@ -65,30 +49,35 @@ public:
         //                               acquisition_time, timeout);
         // tf_listener_.lookupTransform(cam_model_.tfFrame(), frame_id,
         //                              acquisition_time, transform);
-      tf_listener_.waitForTransform(frame_target, cloud_in.header.frame_id, cloud_in.header.stamp, ros::Duration(1.0));
-      tf_listener_.lookupTransform(frame_target, cloud_in.header.frame_id, cloud_in.header.stamp, to_target);
-      // tf_listener_.lookupTransform(frame_target, cloud_in.header.frame_id, ros::Time(0), to_target);
+      // tf_listener_->waitForTransform(frame_target, cloud_in.header.frame_id, cloud_in.header.stamp, ros::Duration(1.0));
+      // tf_listener_->lookupTransform(frame_target, cloud_in.header.frame_id, cloud_in.header.stamp, to_target);
+      tf_listener_->lookupTransform(frame_target, cloud_in.header.frame_id, ros::Time(0), to_target);
     }
     catch (tf::TransformException& ex) 
     {
-      ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
+      ROS_WARN("[draw_frames] TF exception in Cloud_Image_Mapper:\n%s", ex.what());
       // return cloud_in;
     }
     
     // cout << frame_target << "   " << cloud_in.header.frame_id << endl;
     Eigen::Matrix4f eigen_transform;
     pcl_ros::transformAsMatrix (to_target, eigen_transform);
-    pcl_ros::transformPointCloud (eigen_transform, cloud_in, cloud_out);
-    
+    // pcl_ros::transformPointCloud (eigen_transform, cloud_in, cloud_out);
+    pcl::transformPointCloud(cloud_in, cloud_out, eigen_transform);
+
     cloud_out.header.frame_id = frame_target;
     return cloud_out;
   }
 
-  void imageCb(const sensor_msgs::ImageConstPtr& image_msg,
-               const sensor_msgs::CameraInfoConstPtr& info_msg)
+  pcl::PointCloud<pcl::PointXYZRGB> cloud_image_mapping(const sensor_msgs::ImageConstPtr& image_msg,
+                const sensor_msgs::CameraInfoConstPtr& info_msg,
+                pcl::PointCloud<pcl::PointXYZRGB> velodyne_cloud,
+                float *cloud_vision_label)
   {   
 
-    cout << "image in" << endl;
+    // cout << "image in" << endl;
+    cloud_vision_label = new float[velodyne_cloud.points.size()];
+
     cv::Mat image, image_display;
     cv_bridge::CvImagePtr input_bridge;
     try {
@@ -98,7 +87,7 @@ public:
     }
     catch (cv_bridge::Exception& ex){
       ROS_ERROR("[draw_frames] Failed to convert image");
-      return;
+      return velodyne_cloud;
     }
     
     cv::Mat img_mindist(image.rows, image.cols, CV_8UC1, cv::Scalar(255));
@@ -106,19 +95,7 @@ public:
    // read camera information
     cam_model_.fromCameraInfo(info_msg);
 
-    sensor_msgs::PointCloud2 cloud_transformed = transform_cloud (velodyne_cloud, cam_model_.tfFrame());
-    //sensor_msgs::PointCloud2 cloud_transformed = transform_cloud (velodyne_cloud, "kinect2_ir_optical_frame");
-    //pcl::PointCloud<pcl::PointXYZ> pcl_cloud_temp;
-    //pcl::fromROSMsg(cloud_transformed, pcl_cloud_temp);
-    
-    pcl::PointCloud<pcl::PointXYZRGB> pcl_cloud;
-    pcl::fromROSMsg(cloud_transformed, pcl_cloud);
-    //copyPointCloud(pcl_cloud_temp, pcl_cloud); 
-  
-    //BOOST_FOREACH(const std::string& frame_id, frame_ids_) 
-    //{
-    // string frame_id = frame_ids_[0];
-    // cout << frame_id << endl;
+    pcl::PointCloud<pcl::PointXYZRGB> pcl_cloud = transform_cloud (velodyne_cloud, cam_model_.tfFrame());
     
     //tf::Point pt = transform.getOrigin();
     
@@ -205,10 +182,11 @@ public:
           uchar g = intensity.val[1];
           uchar b = intensity.val[0];
           
-          pcl_cloud.points[i].r = r;
-          pcl_cloud.points[i].g = g;
-          pcl_cloud.points[i].b = b;
-              
+          velodyne_cloud.points[i].r = r;
+          velodyne_cloud.points[i].g = g;
+          velodyne_cloud.points[i].b = b;
+          
+          cloud_vision_label[i] = (r+g+b)/3;
           //cv::line(image, p1, p2, CV_RGB(255,0,0), 1);
         }
         cv::circle(image, uv, RADIUS, CV_RGB(point_r,point_g,point_b), -1);    
@@ -217,72 +195,7 @@ public:
     
     cv::imshow("min", image);
     cv::waitKey(5);
-        
-    // sensor_msgs::PointCloud2 cloud_pub;
-    // pcl::toROSMsg(pcl_cloud, cloud_pub);
 
-    // pub_velodyne_color_.publish(cloud_pub);
-
-    //  break;
-    //}
-    
-    pub_.publish(input_bridge->toImageMsg());
+    return velodyne_cloud;
   }
-};
-
-void callback_velodyne(const sensor_msgs::PointCloud2ConstPtr &cloud_in)
-{
-    ///////////// transform ////////////////////
-    velodyne_cloud = *cloud_in;
-    // cout << "  velodyne frame: " << cloud_in->header.frame_id << endl;
-    
-  //   sensor_msgs::PointCloud2 cloud_transformed = transform_cloud (cloud_in, "base_link");
-  //   cloud_transformed.header.frame_id = "base_link";
-    
-  //   pcl::PointCloud<pcl::PointXYZ> pcl_cloud;
-  //  // pcl::fromROSMsg(*cloud_in, pcl_cloud);
-  //   pcl::fromROSMsg(cloud_transformed, pcl_cloud);
-
-}
-
-int main(int argc, char** argv){
-    ros::init(argc, argv, "cloud_image_mapper");
-    ros::NodeHandle node;
-    
-    std::vector<std::string> frame_ids(argv + 1, argv + argc);
-    
-    //ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, callback_velodyne);
-    //ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("ndt_map", 10, callback_velodyne);
-    
-    ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("points_raw", 10, callback_velodyne);
-    
-    cout << frame_ids[0] << endl;
-    cout << frame_ids[1] << endl;    
-    
-    FrameDrawer drawer(frame_ids);
-    ros::spin();
-  
-  
-  
-    // ros::NodeHandle node;
-    // ros::Rate rate(10.0);
-
-    // ros::Subscriber sub_velodyne = node.subscribe<sensor_msgs::PointCloud2>("/velodyne_points", 10, callback_velodyne);
-    // ros::Subscriber sub_kinect = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, callback_kinect);
-
-    // pub_velodyne   = node.advertise<sensor_msgs::PointCloud2>("/velodyne_points_color", 1);
-
-    // // ros::Subscriber sub_odom = node.subscribe<geometry_msgs::PoseStamped>("/slam_out_pose", 1, callback_odom);
-    // // ros::Subscriber sub_odom_icp = node.subscribe<nav_msgs::Odometry >("/icp_odom", 1, callback_odom_icp);
-
-
-    // tfListener = new (tf::TransformListener);
-
-    // while (node.ok())
-    // {
-
-    //     ros::spinOnce();
-    //     rate.sleep();
-    // }
-    // return 0;
 };
