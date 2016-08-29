@@ -71,12 +71,11 @@ public:
 
   pcl::PointCloud<pcl::PointXYZRGB> cloud_image_mapping(const sensor_msgs::ImageConstPtr& image_msg,
                 const sensor_msgs::CameraInfoConstPtr& info_msg,
-                pcl::PointCloud<pcl::PointXYZRGB> velodyne_cloud,
-                float *cloud_vision_label)
+                pcl::PointCloud<pcl::PointXYZRGB> velodyne_cloud)
   {   
 
     // cout << "image in" << endl;
-    cloud_vision_label = new float[velodyne_cloud.points.size()];
+    // cloud_vision_label = new float[velodyne_cloud.points.size()];
 
     cv::Mat image, image_display;
     cv_bridge::CvImagePtr input_bridge;
@@ -186,7 +185,7 @@ public:
           velodyne_cloud.points[i].g = g;
           velodyne_cloud.points[i].b = b;
           
-          cloud_vision_label[i] = (r+g+b)/3;
+          // cloud_vision_label[i] = (r+g+b)/3;
           //cv::line(image, p1, p2, CV_RGB(255,0,0), 1);
         }
         cv::circle(image, uv, RADIUS, CV_RGB(point_r,point_g,point_b), -1);    
