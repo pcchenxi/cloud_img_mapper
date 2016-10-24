@@ -24,6 +24,7 @@ catkin_package(
 
 
 include_directories(
+  include
   ${OpenCV_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
@@ -35,7 +36,7 @@ link_directories(
 )
 
 add_definitions(${PCL_DEFINITIONS})
-include_directories(include ${catkin_INCLUDE_DIRS})
+
 
 add_executable(cloud_img_mapper src/cloud_img_mapper.cpp)
 
