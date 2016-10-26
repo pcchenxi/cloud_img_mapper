@@ -1,6 +1,0 @@
-<launch>  
-<node name="cloud_img_mapper" pkg="cloud_img_mapper" type="cloud_img_mapper" args="/velodyne /base_laser_link /r_gripper_tool_frame" output="screen">
-    <remap from="image" to="/kinect2/qhd/image_color" />
-    <remap from="/points_raw" to="ground_obstacle" />
-  </node>
-</launch>  

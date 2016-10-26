@@ -90,9 +90,9 @@ public:
       image_display = image.clone();
 
       ostringstream file_name;
-      file_name << "/home/xi/workspace/catkin_rcv/image/" << ros::Time::now() << "_img.jpg";
+      //file_name << "/home/xi/workspace/catkin_rcv/image/" << ros::Time::now() << "_img.jpg";
     
-      ROS_ASSERT( cv::imwrite( file_name.str(), image ) );  
+      //ROS_ASSERT( cv::imwrite( file_name.str(), image ) );  
       // ROS_ASSERT( cv::imwrite( "img.jpg",  input_bridge->image ) );  
     }
     catch (cv_bridge::Exception& ex){
