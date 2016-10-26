@@ -1,3 +1,4 @@
+#include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <image_geometry/pinhole_camera_model.h>
 #include <tf/transform_listener.h>
@@ -74,12 +75,10 @@ public:
                 const sensor_msgs::CameraInfoConstPtr& info_msg,
                 pcl::PointCloud<pcl::PointXYZRGB> velodyne_cloud)
   {   
-    float map_resolution = 0.03;
-    int map_rows = 10.0/map_resolution;
-    int map_cols = 10.0/map_resolution;
-    Mat label_on_ground = Mat(map_rows, map_cols, CV_8UC3,  Scalar(0));
 
-    cout << "image in" << endl;
+ ToDo:: output two images, 1, depth image on image plane, 2 CNN label image on the ground
+
+    // cout << "image in" << endl;
     // cloud_vision_label = new float[velodyne_cloud.points.size()];
 
     cv::Mat image, image_display;
@@ -89,11 +88,11 @@ public:
       image = input_bridge->image;
       image_display = image.clone();
 
-      ostringstream file_name;
-      file_name << "/home/xi/workspace/catkin_rcv/image/" << ros::Time::now() << "_img.jpg";
+      // ostringstream file_name;
+      // file_name << "/home/xi/workspace/catkin_rcv/image/" << ros::Time::now() << "_img.jpg";
     
-      ROS_ASSERT( cv::imwrite( file_name.str(), image ) );  
-      // ROS_ASSERT( cv::imwrite( "img.jpg",  input_bridge->image ) );  
+      // ROS_ASSERT( cv::imwrite( file_name.str(), image ) );  
+      // // ROS_ASSERT( cv::imwrite( "img.jpg",  input_bridge->image ) );  
     }
     catch (cv_bridge::Exception& ex){
       ROS_ERROR("[draw_frames] Failed to convert image");
@@ -108,6 +107,64 @@ public:
 
     pcl::PointCloud<pcl::PointXYZRGB> pcl_cloud = transform_cloud (velodyne_cloud, cam_model_.tfFrame());
     
+    //tf::Point pt = transform.getOrigin();
+    
+    for(int i = 0; i < pcl_cloud.points.size(); i++)
+    {
+      pcl::PointXYZRGB point = pcl_cloud.points[i];
+      if(point.x == 0 && point.y == 0 && point.z == 0)
+        continue;
+
+      if(point.z < 0)
+        continue;
+      
+      cv::Point3d pt_cv(point.x, point.y, point.z);
+      
+      cv::Point2d uv;
+      uv = cam_model_.project3dToPixel(pt_cv);
+
+      
+      static const int RADIUS = 25;
+      //cout << uv << endl;
+      
+      // generate image with minimum distance
+      if(uv.x >= 0 && uv.x < image.cols && uv.y >= 0 && uv.y < image.rows)
+      {
+        
+        uchar min_z = img_mindist.at<uchar>(uv.y, uv.x);
+        if(point.z < min_z)
+        {
+          cv::Point p1, p2;
+          p1.x = uv.x;
+          p1.y = uv.y - 5;
+          p2.x = uv.x;
+          p2.y = uv.y + 5;        
+          //cv::circle(image, uv, RADIUS, CV_RGB(255,0,0), -1);
+          cv::line(img_mindist, p1, p2, point.z/0.02, 5);
+          
+        }
+         // cv::circle(img_mindist, uv, RADIUS, point.z/0.02, -1);
+        
+        // cv::Vec3b intensity = image.at<cv::Vec3b>(uv.y, uv.x);
+        // uchar r = intensity.val[2];
+        // uchar g = intensity.val[1];
+        // uchar b = intensity.val[0];
+        
+        // pcl_cloud.points[i].r = r;
+        // pcl_cloud.points[i].g = g;
+        // pcl_cloud.points[i].b = b;
+        
+        // cv::Point p1, p2;
+        // p1.x = uv.x;
+        // p1.y = uv.y - 11;
+        // p2.x = uv.x;
+        // p2.y = uv.y + 11;        
+        // //cv::circle(image, uv, RADIUS, CV_RGB(255,0,0), -1);
+        // cv::line(image, p1, p2, CV_RGB(255,0,0), 1);
+       
+      }
+    }
+    
     for(int i = 0; i < pcl_cloud.points.size(); i++)
     {
       pcl::PointXYZRGB point = pcl_cloud.points[i];
@@ -121,6 +178,7 @@ public:
 
       
       static const int RADIUS = 7;
+      //cout << uv << endl;
       
       if(uv.x >= 0 && uv.x < image.cols && uv.y >= 0 && uv.y < image.rows)
       {
@@ -128,9 +186,25 @@ public:
         uchar point_g = pcl_cloud.points[i].g;
         uchar point_b = pcl_cloud.points[i].b;
 
-        // cv::circle(image, uv, RADIUS, CV_RGB(point_r,point_g,point_b), -1);    
+        // uchar min_z = img_mindist.at<uchar>(uv.y, uv.x);
+        // if(abs(point.z/0.02 - min_z) < 10 )
+	      // // if(point.z/0.02 < min_z )
+        // {
+        //   cv::Vec3b intensity = image_display.at<cv::Vec3b>(uv.y, uv.x);
 
-        // for grey scale label
+        //   uchar r = intensity.val[2];
+        //   uchar g = intensity.val[1];
+        //   uchar b = intensity.val[0];
+          
+        //   velodyne_cloud.points[i].r = r;
+        //   velodyne_cloud.points[i].g = g;
+        //   velodyne_cloud.points[i].b = b;
+          
+        //   // cloud_vision_label[i] = (r+g+b)/3;
+        //   //cv::line(image, p1, p2, CV_RGB(255,0,0), 1);
+        // }
+        cv::circle(image, uv, RADIUS, CV_RGB(point_r,point_g,point_b), -1);    
+
         int color_grey = 0;
         if(point_r == 50)
           color_grey = 50;
@@ -140,27 +214,15 @@ public:
           color_grey = 255;  
 
 
-        // for depth image
-        float max_dist = 10;
-        if(point.z > 10)
+        if(point.z > 5)
           continue;
 
-        float scaled_depth = 255/10 * point.z;
+        float scaled_depth = 255/5 * point.z;
         uchar depth = 255 - scaled_depth;
 
-        cv::circle(img_label, uv, 3, CV_RGB(depth, depth, depth), -1);    
+        cv::circle(img_label, uv, 5, CV_RGB(depth, depth, depth), -1);    
+
         // cv::circle(img_label, uv, 5, CV_RGB(color_grey,color_grey,color_grey), -1); 
-      
-        // project it to ground plane
-        cv::Vec3b intensity = image.at<cv::Vec3b>(uv.y, uv.x);
-        uchar label = (intensity.val[0] + intensity.val[1] + intensity.val[2])/3;
-        int row = velodyne_cloud.points[i].y/map_resolution + map_rows/2; 
-        int col = velodyne_cloud.points[i].x/map_resolution + map_cols/2; 
-        if(row < 0 || row >= map_rows || col < 0 || col >= map_cols)
-          continue;
-        // cout << row << " " << col << endl;
-        col = map_cols - col;
-        label_on_ground.ptr<cv::Vec3b>(row)[col] = intensity;
       }
     }
     
@@ -179,8 +241,8 @@ public:
    file_name << "/home/xi/workspace/catkin_rcv/image/" << ros::Time::now() << "_label.png";
   //  ROS_ASSERT( cv::imwrite( file_name.str(), img_label ) );  
 
-   cv::imshow("label_on_ground", label_on_ground);
-  //  cv::imshow("depth", img_label_grey_);
+//    cv::imshow("img", img_label_color_);
+   cv::imshow("label", img_label_grey_);
    cv::waitKey(5);
 
     return velodyne_cloud;
